@@ -1,0 +1,44 @@
+# API Keys and Secrets
+.env
+config.py
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Data Files (선택사항 - CSV 파일을 공유하고 싶으면 주석 처리)
+# *.csv
+# *.xlsx
+# *.xls
+
+# Test Files
+test_*.py
+debug_*.py
+diagnose_*.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
