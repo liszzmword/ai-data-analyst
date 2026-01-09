@@ -45,20 +45,20 @@ class UploadHandler:
         return None
 
     def _convert_numeric_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """문자열로 저장된 숫자 컬럼을 numeric 타입으로 변환"""
+        """문자열로 저장된 숫자 컬럼을 numeric 타입으로 변환 (강화)"""
         for col in df.columns:
             # 숫자 관련 키워드가 포함된 컬럼만 시도
-            numeric_keywords = ['합계', '금액', '가액', '세', '단가', '수량', '마진', '율', '금액']
+            numeric_keywords = ['합계', '금액', '가액', '세', '단가', '수량', '마진', '율', '%, '개', '건', '일', '월', '년', '점수']
 
             if any(keyword in col for keyword in numeric_keywords):
                 try:
                     # 쉼표 제거 후 숫자로 변환
                     if df[col].dtype == 'object':
                         # 빈 문자열 또는 'nan'을 NaN으로 변환
-                        df[col] = df[col].replace(['', 'nan', 'NaN', 'None', '-'], pd.NA)
+                        df[col] = df[col].replace(['', 'nan', 'NaN', 'None', '-', ' '], pd.NA)
 
-                        # 문자열에서 쉼표, 공백 제거
-                        df[col] = df[col].astype(str).str.replace(',', '').str.replace(' ', '')
+                        # 문자열에서 쉼표, 공백, % 기호 제거
+                        df[col] = df[col].astype(str).str.replace(',', '').str.replace(' ', '').str.replace('%', '')
 
                         # numeric으로 변환 (변환 불가능한 값은 NaN, 빈 값도 NaN)
                         df[col] = pd.to_numeric(df[col], errors='coerce')

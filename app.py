@@ -20,7 +20,7 @@ st.set_page_config(
 def initialize_session():
     """세션 초기화"""
     # 버전 체크 (코드 업데이트 시 세션 초기화)
-    CURRENT_VERSION = "2.1"  # 다중 파일 조인 + 특정 거래처 검색 + 전체 데이터 분석
+    CURRENT_VERSION = "3.0"  # 대화 컨텍스트 유지 + 거래처코드 매핑 + AI 판단 강화
 
     if 'version' not in st.session_state or st.session_state.version != CURRENT_VERSION:
         # 버전이 다르면 모든 세션 초기화
@@ -36,6 +36,10 @@ def initialize_session():
 
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+
+    if 'conversation_context' not in st.session_state:
+        # 대화 컨텍스트: 최근 3개의 질문-답변 저장
+        st.session_state.conversation_context = []
 
 
 def main():
@@ -225,7 +229,13 @@ def main():
                 with st.spinner("분석 중..."):
                     try:
                         analyst = st.session_state.analyst
-                        result = analyst.analyze(user_query, include_images=True)
+
+                        # 대화 컨텍스트 전달
+                        result = analyst.analyze(
+                            user_query,
+                            include_images=True,
+                            conversation_context=st.session_state.conversation_context
+                        )
 
                         # 응답 표시
                         st.markdown(result.gemini_response)
@@ -246,8 +256,16 @@ def main():
                             "tables": tables_to_save
                         })
 
+                        # 대화 컨텍스트 업데이트 (최근 3개만 유지)
+                        st.session_state.conversation_context.append({
+                            "query": user_query,
+                            "response": result.gemini_response
+                        })
+                        if len(st.session_state.conversation_context) > 3:
+                            st.session_state.conversation_context.pop(0)
+
                     except Exception as e:
-                        error_msg = f"오류 발생: {e}"
+                        error_msg = f"분석 중 오류 발생: {e}"
                         st.error(error_msg)
                         st.session_state.chat_history.append({
                             "role": "assistant",
@@ -277,7 +295,11 @@ def main():
                     with st.spinner("분석 중..."):
                         try:
                             analyst = st.session_state.analyst
-                            result = analyst.analyze(question, include_images=True)
+                            result = analyst.analyze(
+                                question,
+                                include_images=True,
+                                conversation_context=st.session_state.conversation_context
+                            )
 
                             st.session_state.chat_history.append({
                                 "role": "assistant",
@@ -285,10 +307,18 @@ def main():
                                 "tables": result.tables or []
                             })
 
+                            # 대화 컨텍스트 업데이트
+                            st.session_state.conversation_context.append({
+                                "query": question,
+                                "response": result.gemini_response
+                            })
+                            if len(st.session_state.conversation_context) > 3:
+                                st.session_state.conversation_context.pop(0)
+
                             st.rerun()
 
                         except Exception as e:
-                            st.error(f"오류: {e}")
+                            st.error(f"분석 중 오류: {e}")
 
 
 if __name__ == "__main__":

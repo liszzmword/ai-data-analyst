@@ -34,26 +34,29 @@ class SmartAnalyst:
         self.llm = genai.GenerativeModel('gemini-2.5-pro')  # 최신 Pro 모델
         print("✓ 스마트 분석기 초기화 (Gemini 2.5 Pro)")
 
-    def analyze(self, query: str, include_images: bool = True) -> AnalysisResult:
+    def analyze(self, query: str, include_images: bool = True, conversation_context: list = None) -> AnalysisResult:
         """
-        질문에 대한 분석 수행
+        질문에 대한 분석 수행 (대화 컨텍스트 지원)
 
         Args:
             query: 사용자 질문
             include_images: 이미지 포함 여부
+            conversation_context: 이전 대화 컨텍스트 (최근 3개)
 
         Returns:
             AnalysisResult
         """
         print(f"\n{'='*60}")
         print(f"🔍 질문: {query}")
+        if conversation_context:
+            print(f"📝 이전 대화: {len(conversation_context)}개")
         print(f"{'='*60}")
 
         # 1. 데이터 컨텍스트 구성
         data_context = self._build_data_context(query, include_images)
 
-        # 2. Gemini 분석
-        gemini_response = self._generate_analysis(query, data_context, include_images)
+        # 2. Gemini 분석 (대화 컨텍스트 포함)
+        gemini_response = self._generate_analysis(query, data_context, include_images, conversation_context)
 
         # 3. 결과 테이블/차트 추출 (필요시)
         tables, charts = self._extract_results(query, data_context)
@@ -131,22 +134,49 @@ class SmartAnalyst:
         return "\n".join(context_parts)
 
     def _join_dataframes(self, dataframes: Dict[str, pd.DataFrame]) -> Optional[pd.DataFrame]:
-        """여러 DataFrame을 거래처 기준으로 조인"""
+        """여러 DataFrame을 거래처 기준으로 조인 (거래처코드 ↔ 거래처명 매핑 지원)"""
         try:
-            # 거래처 컬럼이 있는 파일들만 선택
+            # 1. 거래처 코드 ↔ 거래처명 매핑 테이블 생성
+            code_to_name_map = {}
+            name_to_code_map = {}
+
+            for filename, df in dataframes.items():
+                if '거래처 코드' in df.columns and '거래처' in df.columns:
+                    for _, row in df[['거래처 코드', '거래처']].dropna().iterrows():
+                        code = str(row['거래처 코드']).strip()
+                        name = str(row['거래처']).strip()
+                        code_to_name_map[code] = name
+                        name_to_code_map[name] = code
+                elif '거래처 코드' in df.columns and '거래처명' in df.columns:
+                    for _, row in df[['거래처 코드', '거래처명']].dropna().iterrows():
+                        code = str(row['거래처 코드']).strip()
+                        name = str(row['거래처명']).strip()
+                        code_to_name_map[code] = name
+                        name_to_code_map[name] = code
+
+            print(f"  → 거래처 매핑: 코드 {len(code_to_name_map)}개, 이름 {len(name_to_code_map)}개")
+
+            # 2. 거래처 컬럼이 있는 파일들만 선택
             joinable_dfs = []
             for filename, df in dataframes.items():
-                if '거래처' in df.columns or '거래처명' in df.columns:
-                    # 거래처 컬럼 통일
+                if '거래처' in df.columns or '거래처명' in df.columns or '거래처 코드' in df.columns:
                     df_copy = df.copy()
-                    if '거래처명' in df_copy.columns and '거래처' not in df_copy.columns:
-                        df_copy['거래처'] = df_copy['거래처명']
+
+                    # 거래처 컬럼 통일 (우선순위: 거래처 > 거래처명 > 거래처 코드를 이름으로 변환)
+                    if '거래처' not in df_copy.columns:
+                        if '거래처명' in df_copy.columns:
+                            df_copy['거래처'] = df_copy['거래처명']
+                        elif '거래처 코드' in df_copy.columns:
+                            # 거래처 코드를 거래처명으로 변환
+                            df_copy['거래처'] = df_copy['거래처 코드'].apply(
+                                lambda x: code_to_name_map.get(str(x).strip(), str(x)) if pd.notna(x) else None
+                            )
+                            print(f"  → {filename}: 거래처 코드 → 거래처명 변환")
 
                     # 파일명을 prefix로 컬럼명 변경 (중복 방지)
-                    # 단, 거래처 관련 컬럼과 자주 사용되는 중요 컬럼은 prefix 없이 유지
-                    file_prefix = filename.replace('.csv', '').replace(' ', '_').replace('(', '').replace(')', '')
+                    file_prefix = filename.replace('.csv', '').replace(' ', '_').replace('(', '').replace(')', '').replace('ver1', '').replace('_1', '')
                     rename_dict = {}
-                    important_cols = ['거래처', '거래처명', '거래처 코드', '매출일', '거래일', '합계', '총 판매금액', '공급가액']
+                    important_cols = ['거래처', '거래처명', '거래처 코드', '매출일', '거래일', '합계', '총 판매금액', '공급가액', '마진율', '제품명', '제품군']
 
                     for col in df_copy.columns:
                         if col not in important_cols:
@@ -158,7 +188,7 @@ class SmartAnalyst:
             if len(joinable_dfs) < 2:
                 return None
 
-            # 첫 번째 DataFrame부터 순차적으로 조인
+            # 3. 첫 번째 DataFrame부터 순차적으로 조인
             result_df = joinable_dfs[0][1]
             print(f"  → 조인 시작: {joinable_dfs[0][0]} ({len(result_df):,}행)")
 
@@ -182,6 +212,8 @@ class SmartAnalyst:
 
         except Exception as e:
             print(f"  ⚠ 조인 실패: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _find_relevant_data(self, query: str, df: pd.DataFrame, filename: str) -> str:
@@ -484,8 +516,8 @@ class SmartAnalyst:
 
         return keywords
 
-    def _generate_analysis(self, query: str, data_context: str, include_images: bool) -> str:
-        """Gemini로 분석 생성"""
+    def _generate_analysis(self, query: str, data_context: str, include_images: bool, conversation_context: list = None) -> str:
+        """Gemini로 분석 생성 (AI 판단 강화 + 대화 컨텍스트)"""
         print("🤖 Gemini 분석 중...")
 
         # 이미지가 있으면 multimodal 프롬프트
@@ -494,12 +526,20 @@ class SmartAnalyst:
             if images:
                 return self._generate_multimodal_analysis(query, data_context, images)
 
+        # 대화 컨텍스트 구성
+        context_str = ""
+        if conversation_context and len(conversation_context) > 0:
+            context_str = "\n**이전 대화 내역** (참고용):\n"
+            for i, ctx in enumerate(conversation_context[-3:], 1):  # 최근 3개만
+                context_str += f"{i}. 질문: {ctx['query']}\n"
+                context_str += f"   답변: {ctx['response'][:200]}...\n\n"  # 답변은 200자까지만
+
         # 텍스트 전용 프롬프트
         prompt = f"""당신은 **비즈니스 데이터 분석 전문가**입니다.
 
 사용자가 업로드한 데이터를 바탕으로 질문에 답변하세요.
-
-**사용자 질문**: {query}
+{context_str}
+**현재 질문**: {query}
 
 **업로드된 데이터 정보**:
 {data_context}
@@ -507,19 +547,27 @@ class SmartAnalyst:
 **답변 작성 가이드**:
 1. **데이터 요약**: 업로드된 데이터의 핵심 내용
 2. **질문에 대한 답변**: 구체적인 수치와 함께 명확히 답변
-3. **인사이트**: 데이터에서 발견한 중요한 패턴/특징
+3. **인사이트 및 AI 판단**:
+   - 데이터에서 발견한 중요한 패턴/특징
+   - **연평균 성장률 (CAGR)**: 연도별 데이터가 있으면 성장률 계산 공식 = ((최종년도값/초기년도값)^(1/(년수-1)) - 1) × 100
+   - **거래 끊길 위험 분석**: 최근 3개월 매출이 이전 3개월 대비 50% 이상 감소한 거래처, 또는 거래 빈도가 급격히 줄어든 거래처
+   - **고객 등급별 특징**: R(Recency), F(Frequency), M(Monetary) 기준 충성고객, 잠재고객, 위험고객 분류
+   - **제품군별 트렌드**: 특정 제품군 매출 증가/감소 추세
 4. **제안 및 조언**:
    - 의사결정에 도움되는 구체적 조언
-   - 주의사항
+   - 주의가 필요한 거래처/제품
    - 추가 분석이 필요한 부분
 
 **중요 - 반드시 지켜야 할 규칙**:
 - 한국어로 답변
 - **위에 제공된 "계산된 결과" 섹션의 실제 회사명/제품명만 사용할 것**
-- **절대로 존재하지 않는 회사명을 지어내지 말 것 (예: "주식회사 가나다라" 같은 가짜 이름 금지)**
+- **절대로 존재하지 않는 회사명을 지어내지 말 것 (예: "주식회사 가나다라", "베스트출판" 같은 가짜 이름 금지)**
+- **중국어 기업명을 한국어로 번역하지 말 것 (예: "쓰촨쉬홍 OPTO-전자"는 원문 그대로 사용)**
 - 구체적인 숫자/사실만 언급
 - 데이터에 없는 내용은 추측하지 말고 "데이터에 없음"이라고 명시
 - 제공된 pandas 계산 결과를 우선적으로 활용
+- 거래처 코드가 주어지면 반드시 거래처명으로 변환해서 답변
+- NULL/빈 값은 "데이터 없음" 또는 "-"로 표시
 
 답변:"""
 
