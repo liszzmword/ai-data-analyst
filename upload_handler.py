@@ -48,7 +48,7 @@ class UploadHandler:
         """문자열로 저장된 숫자 컬럼을 numeric 타입으로 변환 (강화)"""
         for col in df.columns:
             # 숫자 관련 키워드가 포함된 컬럼만 시도
-            numeric_keywords = ['합계', '금액', '가액', '세', '단가', '수량', '마진', '율', '%, '개', '건', '일', '월', '년', '점수']
+            numeric_keywords = ['합계', '금액', '가액', '세', '단가', '수량', '마진', '율', '%', '개', '건', '일', '월', '년', '점수']
 
             if any(keyword in col for keyword in numeric_keywords):
                 try:
