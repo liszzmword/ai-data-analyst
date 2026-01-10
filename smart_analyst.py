@@ -34,7 +34,7 @@ class SmartAnalyst:
         self.llm = genai.GenerativeModel('gemini-2.5-pro')  # 최신 Pro 모델
         print("✓ 스마트 분석기 초기화 (Gemini 2.5 Pro)")
 
-    def analyze(self, query: str, include_images: bool = True, conversation_context: list = None) -> AnalysisResult:
+    def analyze(self, query: str, include_images: bool = True, conversation_context=None) -> AnalysisResult:
         """
         질문에 대한 분석 수행 (대화 컨텍스트 지원)
 
@@ -516,7 +516,7 @@ class SmartAnalyst:
 
         return keywords
 
-    def _generate_analysis(self, query: str, data_context: str, include_images: bool, conversation_context: list = None) -> str:
+    def _generate_analysis(self, query: str, data_context: str, include_images: bool, conversation_context=None) -> str:
         """Gemini로 분석 생성 (AI 판단 강화 + 대화 컨텍스트)"""
         print("🤖 Gemini 분석 중...")
 

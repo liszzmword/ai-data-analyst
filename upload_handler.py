@@ -112,6 +112,54 @@ class UploadHandler:
 
         return df
 
+    def _shorten_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """긴 칼럼명을 짧게 변환 (영업일지 등)"""
+        rename_dict = {}
+        for col in df.columns:
+            # 25자 이상의 긴 칼럼명을 짧게 변환
+            if len(str(col)) > 25:
+                # 핵심 키워드 추출
+                short_name = col
+                if '재고 수준' in col or '재고수준' in col:
+                    short_name = '재고수준'
+                elif '재고' in col and '파악' in col:
+                    short_name = '재고파악가능여부'
+                elif '주문 방식' in col or '주문방식' in col:
+                    short_name = '주문방식'
+                elif '발주 주기' in col or '발주주기' in col:
+                    short_name = '발주주기'
+                elif ('불만' in col or '개선' in col) and '이력' in col:
+                    short_name = '불만이력'
+                elif ('불만' in col or '개선' in col) and ('내용' in col or '기재' in col):
+                    short_name = '불만내용'
+                elif '경쟁사' in col:
+                    short_name = '경쟁사움직임'
+                elif '거래 확대' in col or '거래확대' in col:
+                    short_name = '거래확대가능성'
+                elif '업황' in col:
+                    short_name = '고객업황'
+                elif '주요 내용' in col:
+                    short_name = '기타주요내용'
+                elif '신규 모델' in col or '비지니스 개발' in col:
+                    short_name = '신규개발중'
+                elif '샘플' in col and '테스트' in col:
+                    short_name = '샘플테스트중'
+                else:
+                    # 처음 20자만 사용
+                    short_name = col[:20].strip()
+
+                # 중복 방지
+                if short_name in rename_dict.values():
+                    short_name = f"{short_name}_{len([k for k, v in rename_dict.items() if v.startswith(short_name)])}"
+
+                rename_dict[col] = short_name
+                print(f"  → 긴 칼럼명 축약: {col[:50]}... → {short_name}")
+
+        if rename_dict:
+            df = df.rename(columns=rename_dict)
+
+        return df
+
     def process_upload(self, file_bytes, filename: str) -> UploadedFile:
         """
         업로드된 파일 처리
@@ -164,6 +212,9 @@ class UploadHandler:
 
         # 코드북으로 컬럼명 변환 시도
         df = self._apply_codebook(df, filename)
+
+        # 긴 칼럼명 축약 (영업일지 등)
+        df = self._shorten_column_names(df)
 
         # 숫자 컬럼 타입 변환 (문자열로 저장된 숫자를 numeric으로 변환)
         df = self._convert_numeric_columns(df)
